@@ -111,15 +111,16 @@ def _parse_document(file_path: str) -> Optional[str]:
 
 
 def _parse_pdf(file_path: str) -> Optional[str]:
-    """Extract text from PDF using PyMuPDF."""
-    import fitz  # PyMuPDF
+    """Extract text from PDF using pypdf."""
+    import pypdf
 
     text_parts = []
     try:
-        doc = fitz.open(file_path)
-        for page in doc:
-            text_parts.append(page.get_text())
-        doc.close()
+        reader = pypdf.PdfReader(file_path)
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                text_parts.append(text)
     except Exception as e:
         print(f"[Parser] PDF error: {e}")
         return None
