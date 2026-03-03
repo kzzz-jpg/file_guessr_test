@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=3">
+    <link rel="stylesheet" href="/static/style.css?v=10">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -22,7 +22,7 @@
         <header class="header">
             <div class="logo">
                 <i data-lucide="search" class="logo-icon"></i>
-                <h1>File Guessr</h1>
+                <h1>File Guessr<small style="font-size: 0.6rem; opacity: 0.5; margin-left: 4px;">v1.1</small></h1>
             </div>
             <div class="header-actions">
                 <button id="btn-status" class="btn btn-ghost" onclick="checkHealth()">
@@ -161,9 +161,37 @@
                 </div>
             </div>
         </div>
+
+        <!-- File Details Modal -->
+        <div class="panel-overlay" id="details-overlay" onclick="closeDetailsModal()"></div>
+        <div class="modal-center" id="panel-details">
+            <div class="modal-header">
+                <div class="title-with-icon">
+                    <i data-lucide="info" class="icon-md"></i>
+                    <h2 id="details-title" class="text-truncate">檔案詳情</h2>
+                </div>
+                <button class="btn-close" onclick="closeDetailsModal()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="details-section">
+                    <span class="details-label">路徑</span>
+                    <div id="details-path" class="details-path-box"></div>
+                </div>
+                <div class="details-section" style="margin-top: 32px;">
+                    <span class="details-label">AI 內容總結</span>
+                    <div id="details-summary" class="details-summary-text"></div>
+                </div>
+                <div class="details-section" style="margin-top: 32px;">
+                    <span class="details-label">完整關鍵字清單 (<span id="details-keyword-count">0</span>)</span>
+                    <div id="details-keywords" class="result-tags"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="/static/app.js?v=3"></script>
+    <script src="/static/app.js?v=10"></script>
     <script>
         // Initialize Lucide icons on page load
         document.addEventListener('DOMContentLoaded', () => {

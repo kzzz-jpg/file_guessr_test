@@ -78,8 +78,21 @@ INSTRUCTIONS:
 - All content must be in English
 - If the original content is not in English, translate the key concepts
 - Summary should be 1-3 sentences describing what this file is about
-- Keywords should be comprehensive: include topics, names, places, technical terms, actions, and concepts
-- Include 15-30 keywords
+- Keywords should be comprehensive and EXHAUSTIVE: include ALL topics, names, places, technical terms, actions, concepts, and proper nouns
+- Include 20-40 keywords
+- CRITICAL: Multi-word terms MUST be kept as a single keyword. Examples:
+  - "binary search" NOT "binary", "search"
+  - "machine learning" NOT "machine", "learning"
+  - "dynamic programming" NOT "dynamic", "programming"
+  - "New York" NOT "New", "York"
+  - "Google Cloud Platform" NOT "Google", "Cloud", "Platform"
+- CRITICAL: Extract ALL proper nouns as complete keywords:
+  - Person names (e.g. "Albert Einstein", "Elon Musk")
+  - Place names (e.g. "San Francisco", "Mount Fuji")
+  - Brand/product names (e.g. "Visual Studio Code", "TensorFlow")
+  - Organization names (e.g. "World Health Organization", "MIT")
+  - Technology names (e.g. "React Native", "Node.js")
+- Keep original proper nouns even if they are not in English (e.g. "東京", "台北101")
 
 FORMAT:
 {{"summary": "Brief description of the file content", "keywords": ["keyword1", "keyword2", "keyword3"]}}"""
@@ -111,24 +124,33 @@ INSTRUCTIONS: Analyze this image with EXTREME precision. Extract and list EVERYT
 FIELDS TO ANALYZE:
 1. BACKGROUND TEXT & OCR: 
    - Transcribe ALL visible text, even if small, blurred, or in the background.
-   - Look for text on: blackboards, whiteboards, signs, computer screens, papers, bookshelves, or clothing labels.
-   - If there are mathematical formulas, scientific equations, or code snippets, transcribe them exactly (e.g., E=mc^2, derivatives, integrals).
+   - Look for text on any surface in the image (ONLY IF ACTUALLY PRESENT).
+   - If there are mathematical formulas, scientific equations, or code snippets, transcribe them exactly.
 2. PEOPLE & ACTIONS: 
-   - Describe specific physical actions (e.g., "person pointing at a board", "student writing in a notebook", "someone laughing while drinking coffee").
-   - Detail their posture, gestures, eye contact, and interactions with objects.
-3. DETAILED OBJECTS:
-   - Identify specific models/types (e.g., "ThinkPad laptop", "potted Monstera plant", "Starbucks cup").
-   - Mention materials (wood, glass, brushed metal) and textures.
+   - Describe specific physical actions ONLY IF PEOPLE ARE PRESENT.
+   - Detail their posture, gestures, eye contact.
+3. VISIBLE OBJECTS & ITEMS (CRITICAL - EXHAUSTIVE LIST):
+   - List EVERY SINGLE concrete physical object you see in the image.
+   - Categorize mentally: Food, Drink, Furniture, Decor, Electronics, Tools, Vehicles, Nature.
+   - Mention specific models, types, materials, and colors when possible.
 4. SCENE & ENVIRONMENT:
    - Detail the lighting (natural, neon, cinematic, dim) and shadows.
    - Describe the depth of field and focus.
-5. TYPES & STYLES: 
-   - Identify if it's a: high-res photo, blurry CCTV frame, digital illustration, handwritten note, screenshot, or scientific diagram.
+5. PROPER NOUNS (CRITICAL - extract ALL of these as complete keywords):
+   - PLACE NAMES: cities, countries, landmarks, buildings
+   - BRAND NAMES: logos, product names, company names
+   - PERSON NAMES: if identifiable from context (name tags, credits, watermarks)
+   - ORGANIZATION NAMES: schools, companies, government agencies visible in the image
+   - Keep proper nouns in their ORIGINAL language too (e.g., "東京タワー", "台北101")
 
 CRITICAL:
 - Respond ONLY with a JSON object. All content must be in English.
 - Summary: 2-4 sentences capturing the core context AND the most defining background detail.
-- Keywords: Include 30-60 keywords. MUST include all text/math found in step 1.
+- Keywords: Include 40-70 keywords. MUST include all objects from step 3 and text from step 1.
+- CRITICAL: ANTICIPATE HALLUCINATIONS. DO NOT invent items. ONLY list objects that are explicitly visible in the pixels of the image.
+- CRITICAL: Multi-word terms MUST be kept as a single keyword:
+  - "Eiffel Tower" NOT "Eiffel", "Tower"
+  - "machine learning" NOT "machine", "learning"
 
 FORMAT:
 {{"summary": "...", "keywords": ["keyword1", "keyword2", ...]}}"""

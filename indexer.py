@@ -6,7 +6,7 @@ import time
 import asyncio
 from typing import Callable, Optional
 
-from file_parser import parse_file, get_file_category
+from file_parser import parse_file, get_file_category, get_document_images, cleanup_temp_images
 from llm import extract_keywords, describe_image
 from database import upsert_file, get_file_modified_time, add_watched_folder
 
@@ -52,12 +52,40 @@ def scan_folder(folder_path: str) -> list[str]:
     return files
 
 
+def _merge_results(results: list[dict]) -> dict:
+    """Merge multiple LLM results (summary + keywords) into one."""
+    all_keywords = []
+    summaries = []
+
+    for r in results:
+        keywords = r.get("keywords", [])
+        all_keywords.extend(keywords)
+        summary = r.get("summary", "")
+        if summary:
+            summaries.append(summary)
+
+    # Deduplicate keywords (case-insensitive) while preserving order
+    seen = set()
+    unique_keywords = []
+    for kw in all_keywords:
+        kw_lower = kw.lower().strip()
+        if kw_lower and kw_lower not in seen:
+            seen.add(kw_lower)
+            unique_keywords.append(kw.strip())
+
+    return {
+        "summary": " ".join(summaries[:3]),  # Keep first 3 summaries
+        "keywords": unique_keywords,
+    }
+
+
 async def index_file(file_path: str) -> bool:
     """
     Index a single file: parse -> LLM -> database.
     Returns True if successful, False otherwise.
     """
     try:
+        file_path = os.path.normpath(file_path)
         file_name = os.path.basename(file_path)
         file_type = os.path.splitext(file_path)[1].lower()
         file_size = os.path.getsize(file_path)
@@ -74,6 +102,14 @@ async def index_file(file_path: str) -> bool:
             # Use vision model directly
             result = await describe_image(file_path, file_name)
             raw_text = ""
+        elif category == "document":
+            # Hybrid approach: extract text + extract images, send both to LLM
+            result = await _index_document(file_path, file_name)
+            raw_text = ""
+            # Also try to get raw text for search
+            text_content, _ = parse_file(file_path)
+            if text_content and text_content.strip():
+                raw_text = text_content
         else:
             # Parse text content first
             text_content, parsed_category = parse_file(file_path)
@@ -96,8 +132,8 @@ async def index_file(file_path: str) -> bool:
             raw_text = text_content
             result = await extract_keywords(text_content, file_name)
 
-        # Store in database
-        keywords_str = " ".join(result.get("keywords", []))
+        # Store in database — use comma-separated keywords to preserve multi-word terms
+        keywords_str = ", ".join(result.get("keywords", []))
         upsert_file(
             file_path=file_path,
             file_name=file_name,
@@ -113,6 +149,51 @@ async def index_file(file_path: str) -> bool:
     except Exception as e:
         print(f"[Indexer] Error indexing {file_path}: {e}")
         return False
+
+
+async def _index_document(file_path: str, file_name: str) -> dict:
+    """
+    Index a document file (PDF, DOCX, XLSX, PPTX) using a hybrid approach:
+    1. Extract text → send to text LLM for keyword extraction
+    2. Extract/render images → send to vision LLM for analysis
+    3. Merge all results
+    """
+    results = []
+
+    # Step 1: Text extraction → LLM
+    text_content, _ = parse_file(file_path)
+    if text_content and text_content.strip():
+        try:
+            text_result = await extract_keywords(text_content, file_name)
+            results.append(text_result)
+            print(f"[Indexer] {file_name}: extracted {len(text_result.get('keywords', []))} text keywords")
+        except Exception as e:
+            print(f"[Indexer] Error extracting text keywords from {file_name}: {e}")
+
+    # Step 2: Image extraction → Vision LLM
+    image_paths = []
+    try:
+        image_paths = get_document_images(file_path)
+        if image_paths:
+            print(f"[Indexer] {file_name}: found {len(image_paths)} images, analyzing...")
+            # Process up to 5 images to avoid being too slow
+            for i, img_path in enumerate(image_paths[:5]):
+                try:
+                    img_result = await describe_image(img_path, f"{file_name} (image {i+1})")
+                    results.append(img_result)
+                except Exception as e:
+                    print(f"[Indexer] Error describing image {i+1} from {file_name}: {e}")
+    except Exception as e:
+        print(f"[Indexer] Error extracting images from {file_name}: {e}")
+    finally:
+        # Clean up temp images
+        cleanup_temp_images(image_paths)
+
+    # Step 3: Merge results
+    if results:
+        return _merge_results(results)
+    else:
+        return {"summary": f"Document file: {file_name}", "keywords": [file_name]}
 
 
 async def index_folder(folder_path: str):

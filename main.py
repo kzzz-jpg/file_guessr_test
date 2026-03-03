@@ -121,8 +121,9 @@ async def indexing_status():
 
 
 @app.get("/api/search")
-async def search(q: str = Query(..., min_length=1)):
-    """Search files with natural language query."""
+async def search(q: str = Query("")):
+    """Search files with natural language query. Empty query returns all files."""
+    q = q.strip()
     result = await search_files(q)
     return result
 

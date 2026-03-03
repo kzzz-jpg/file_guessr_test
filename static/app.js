@@ -101,7 +101,7 @@ function removeAttachment() {
 async function doSearch() {
     const input = document.getElementById('search-input');
     const query = input.value.trim();
-    if ((!query && !attachedFile) || isSearching) return;
+    if (isSearching) return;
 
     isSearching = true;
     const btn = document.getElementById('btn-search');
@@ -133,10 +133,16 @@ async function doSearch() {
             data = await res.json();
         }
 
-        const fileTag = data.uploaded_file
-            ? ` + <span class="attached-tag">分析物件: ${escapeHtml(data.uploaded_file)}</span>`
-            : '';
-        meta.innerHTML = `找到 ${data.total_results} 個相關對象${fileTag} — <span class="expanded-query">${escapeHtml(data.expanded_query)}</span>`;
+        if (attachedFile) {
+            const fileTag = data.uploaded_file
+                ? ` + <span class="attached-tag">分析物件: ${escapeHtml(data.uploaded_file)}</span>`
+                : '';
+            meta.innerHTML = `找到 ${data.total_results} 個相關對象${fileTag} — <span class="expanded-query">${escapeHtml(data.expanded_query)}</span>`;
+        } else if (!query) {
+            meta.innerHTML = `正在瀏覽所有檔案 — 顯示前 ${data.total_results} 個最新項目`;
+        } else {
+            meta.innerHTML = `找到 ${data.total_results} 個相關對象 — <span class="expanded-query">${escapeHtml(data.expanded_query)}</span>`;
+        }
 
         if (data.results.length === 0) {
             results.innerHTML = `
@@ -146,6 +152,7 @@ async function doSearch() {
                     <p>嘗試調整搜尋語句，或確認資料夾已完成索引</p>
                 </div>`;
         } else {
+            currentResults = []; // clear previous
             results.innerHTML = data.results.map((r, i) => renderResult(r, i, data.expanded_query, data.original_query)).join('');
         }
 
@@ -162,11 +169,18 @@ async function doSearch() {
     }
 }
 
+// Store results globally so the modal can access them
+let currentResults = [];
+
 function renderResult(r, index, expandedQuery, originalQuery) {
+    // Store in global array
+    currentResults[index] = r;
+
     const iconName = getFileIcon(r.file_type);
     const isImage = isImageType(r.file_type);
     const size = formatSize(r.file_size);
-    const keywords = (r.keywords || '').split(' ').filter(k => k);
+    // Split by comma instead of space to preserve multi-word keyword tags like "binary search"
+    const keywords = (r.keywords || '').split(',').map(k => k.trim()).filter(k => k);
 
     // Combine original and expanded query for better highlighting coverage
     const combinedQuery = (originalQuery || '') + ' ' + (expandedQuery || '');
@@ -205,10 +219,9 @@ function renderResult(r, index, expandedQuery, originalQuery) {
     }
 
     return `
-        <div class="result-card" style="animation-delay: ${index * 0.05}s" 
-             onclick="copyPath('${escapeAttr(r.file_path)}')">
+        <div class="result-card" style="animation-delay: ${index * 0.05}s">
             ${imagePreview}
-            <div class="result-header">
+            <div class="result-header" onclick="copyPath('${escapeAttr(r.file_path)}')">
                 <div class="result-icon-container">
                     <i data-lucide="${iconName}" class="icon-md"></i>
                 </div>
@@ -216,6 +229,9 @@ function renderResult(r, index, expandedQuery, originalQuery) {
                     <h3>${highlightedName}</h3>
                     <div class="result-path">${escapeHtml(r.file_path)}</div>
                 </div>
+                <button class="btn-icon-ghost" onclick="event.stopPropagation(); showFileDetails(${index})" title="查看完整資訊" style="margin-left: auto;">
+                    <i data-lucide="info" class="icon-sm"></i>
+                </button>
             </div>
             <div class="result-summary">${highlightedSummary || '無詳細描述'}</div>
             <div class="result-tags">
@@ -385,8 +401,36 @@ function hidePanel() {
 }
 
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hidePanel();
+    if (e.key === 'Escape') {
+        hidePanel();
+        closeDetailsModal();
+    }
 });
+
+// ── Details Modal ──
+function showFileDetails(index) {
+    const r = currentResults[index];
+    if (!r) return;
+
+    document.getElementById('details-title').textContent = r.file_name;
+    document.getElementById('details-path').textContent = r.file_path;
+    document.getElementById('details-summary').textContent = r.summary || '無總結資訊';
+
+    const keywords = (r.keywords || '').split(',').map(k => k.trim()).filter(k => k);
+    document.getElementById('details-keyword-count').textContent = keywords.length;
+
+    const tagsHtml = keywords.map(k => `<span class="tag">${escapeHtml(k)}</span>`).join('');
+    document.getElementById('details-keywords').innerHTML = tagsHtml || '<span class="text-muted">無關鍵字</span>';
+
+    document.getElementById('details-overlay').classList.add('active');
+    document.getElementById('panel-details').classList.add('active');
+    if (window.lucide) lucide.createIcons();
+}
+
+function closeDetailsModal() {
+    document.getElementById('details-overlay').classList.remove('active');
+    document.getElementById('panel-details').classList.remove('active');
+}
 
 // ── Helpers ──
 function getFileIcon(ext) {
