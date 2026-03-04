@@ -47,38 +47,61 @@ class BackgroundLauncher:
         dc.line((45, 45, 58, 58), fill=color_text, width=6)
         return image
 
-    def ensure_es_service(self):
-        """Ensure Elasticsearch service is running on Windows."""
-        if os.name != 'nt':
-            return
+    def wait_for_es_http(self, timeout=30):
+        """Wait for Elasticsearch HTTP endpoint to be responsive."""
+        logging.info(f"Waiting for Elasticsearch HTTP to be ready (timeout={timeout}s)...")
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                with socket.create_connection(("127.0.0.1", 9200), timeout=1):
+                    logging.info("Elasticsearch HTTP is ready.")
+                    return True
+            except (socket.timeout, ConnectionRefusedError):
+                time.sleep(2)
+        logging.warning("Elasticsearch HTTP wait timed out.")
+        return False
 
+    def ensure_es_service(self):
+        """Ensure Elasticsearch service is running and ready on Windows."""
+        if os.name != 'nt':
+            return True
+
+        service_name = 'elasticsearch-service-x64'
         try:
             # Check service status
-            result = subprocess.run(['sc', 'query', 'elasticsearch-service-x64'], 
+            result = subprocess.run(['sc', 'query', service_name], 
                                    capture_output=True, text=True)
-            if "RUNNING" in result.stdout:
-                logging.info("Elasticsearch service is already running.")
-                return
+            
+            if "SERVICE_NAME" not in result.stdout:
+                logging.warning(f"Elasticsearch service '{service_name}' not found.")
+                return False
 
-            if "SERVICE_NAME" in result.stdout:
+            if "RUNNING" not in result.stdout:
                 logging.info("Starting Elasticsearch service...")
                 # Try starting (might require admin)
-                start_res = subprocess.run(['sc', 'start', 'elasticsearch-service-x64'], 
+                start_res = subprocess.run(['sc', 'start', service_name], 
                                           capture_output=True, text=True)
                 
                 if "Access is denied" in start_res.stderr or "Access is denied" in start_res.stdout:
                     logging.warning("Access denied when starting ES service. Attempting elevation...")
-                    # Elevation trick using PowerShell
-                    cmd = "Start-Process cmd -ArgumentList '/c sc start elasticsearch-service-x64' -Verb RunAs"
+                    cmd = f"Start-Process cmd -ArgumentList '/c sc start {service_name}' -Verb RunAs"
                     subprocess.run(['powershell', '-Command', cmd], creationflags=subprocess.CREATE_NO_WINDOW)
-                    time.sleep(5)
-                else:
-                    # Wait a bit for it to spin up
-                    time.sleep(5)
-            else:
-                logging.warning("Elasticsearch service 'elasticsearch-service-x64' not found.")
+                
+                # Wait for RUNNING state
+                logging.info("Waiting for service to reach RUNNING state...")
+                for _ in range(15): # Wait up to 30 seconds for service start
+                    time.sleep(2)
+                    check = subprocess.run(['sc', 'query', service_name], capture_output=True, text=True)
+                    if "RUNNING" in check.stdout:
+                        logging.info("Service is now RUNNING.")
+                        break
+            
+            # Even if it was already RUNNING, wait for HTTP (Elasticsearch initialization takes time)
+            return self.wait_for_es_http()
+
         except Exception as e:
             logging.error(f"Error checking/starting ES service: {e}")
+            return False
 
     def start_server(self):
         logging.info("Starting server...")

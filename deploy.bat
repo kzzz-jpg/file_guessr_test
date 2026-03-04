@@ -58,26 +58,49 @@ if %errorlevel% neq 0 (echo [ERROR] Dependency installation failed! & pause & ex
 :: --- Part 3: Elasticsearch Detection ---
 echo.
 echo [3/5] Detecting Elasticsearch...
-set "ES_PATH="
-where /r c:\ elasticsearch.bat > temp_es_path.txt 2>nul
-set /p FIRST_PATH=<temp_es_path.txt
-del temp_es_path.txt
-if defined FIRST_PATH (
-    for %%i in ("%FIRST_PATH%") do set "ES_BIN_DIR=%%~dpi"
-    set "ES_HOME=!ES_BIN_DIR!\.."
+set "ES_HOME="
+
+:: Strategy 1: Look for elasticsearch.bat in common locations
+echo Searching for Elasticsearch in common folders...
+for %%D in (C:\ D:\ E:\ %USERPROFILE%\Downloads %USERPROFILE%\Desktop) do (
+    if exist "%%D" (
+        for /f "delims=" %%F in ('dir /s /b "%%Delasticsearch.bat" 2^>nul') do (
+            set "POTENTIAL_BIN_DIR=%%~dpF"
+            set "POTENTIAL_HOME=!POTENTIAL_BIN_DIR!\.."
+            if exist "!POTENTIAL_HOME!\config\elasticsearch.yml" (
+                set "ES_HOME=!POTENTIAL_HOME!"
+                goto :ES_FOUND
+            )
+        )
+    )
+)
+
+:ES_FOUND
+if defined ES_HOME (
     echo Detected Elasticsearch at: !ES_HOME!
 ) else (
     echo [!] Could not automatically find Elasticsearch.
-    set /p ES_HOME="Please enter the path to your Elasticsearch folder (e.g. C:\elasticsearch-8.x): "
+    set /p ES_HOME="Please enter the full path to your Elasticsearch folder (e.g. C:\elasticsearch-9.3.0): "
 )
-if not exist "!ES_HOME!\bin\elasticsearch-service.bat" (echo [ERROR] Could not find elasticsearch-service.bat & pause & goto :FINISH)
+
+if not exist "!ES_HOME!\bin\elasticsearch-service.bat" (
+    echo [ERROR] Could not find elasticsearch-service.bat at !ES_HOME!\bin
+    pause
+    goto :FINISH
+)
 
 :: --- Part 4: Configure and Install Service ---
 echo.
 echo [4/5] Configuring Elasticsearch Settings...
 set "CONFIG_FILE=!ES_HOME!\config\elasticsearch.yml"
-echo Applying security and networking fixes to !CONFIG_FILE!...
+
+:: Clear conflicting env vars for the duration of ES setup
+set JAVA_HOME=
+set ES_JAVA_HOME=
+
+echo Applying security fixes to !CONFIG_FILE!...
 copy "!CONFIG_FILE!" "!CONFIG_FILE!.bak" >nul 2>&1
+:: Disable all security and SSL settings
 powershell -Command "$c = gc '!CONFIG_FILE!'; $c = $c -replace 'xpack.security.enabled:.*', 'xpack.security.enabled: false'; $c = $c -replace 'enabled: true', 'enabled: false'; $c | Out-File -Encoding UTF8 '!CONFIG_FILE!'"
 
 if not exist "!ES_HOME!\config\jvm.options.d" mkdir "!ES_HOME!\config\jvm.options.d"
@@ -87,18 +110,22 @@ echo Setting JVM heap size to 2GB...
     echo -Xmx2g
 ) > "!ES_HOME!\config\jvm.options.d\heap.options"
 
-sc query "elasticsearch-service-x64" >nul 2>&1
+:: Detect existing service name or use default
+set "ES_SERVICE_NAME=elasticsearch-service-x64"
+sc query "!ES_SERVICE_NAME!" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo stopping existing service...
-    sc stop "elasticsearch-service-x64" >nul 2>&1
+    echo Found existing service. Stopping and updating...
+    sc stop "!ES_SERVICE_NAME!" >nul 2>&1
+    timeout /t 2 /nobreak >nul
 ) else (
     echo Installing Elasticsearch service...
     call "!ES_HOME!\bin\elasticsearch-service.bat" install
 )
+
 echo Configuring service for Automatic startup...
-sc config "elasticsearch-service-x64" start= auto
+sc config "!ES_SERVICE_NAME!" start= auto
 echo Starting service...
-sc start "elasticsearch-service-x64"
+sc start "!ES_SERVICE_NAME!"
 
 :: --- Part 5: Shortcut and Finalization ---
 echo.
@@ -113,12 +140,14 @@ if %errorlevel% equ 0 (
     echo ✅ Elasticsearch is UP and RUNNING.
 ) else (
     set /a retry+=1
-    if !retry! lss 15 (
+    if !retry! lss 20 (
         <nul set /p=.
         timeout /t 2 /nobreak >nul
         goto :WAIT_ES
     )
-    echo ⚠️ Elasticsearch is still starting in the background. It should be ready soon.
+    echo.
+    echo ⚠️ Elasticsearch is taking a long time to start. 
+    echo ⚠️ Please wait a minute and then run run.bat.
 )
 
 :FINISH
