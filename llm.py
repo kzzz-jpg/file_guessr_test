@@ -37,6 +37,7 @@ def _clear_llm_cache():
 
 async def _chat(prompt: str, image_path: Optional[str] = None) -> str:
     """Send a chat request to Ollama."""
+    model = get_model_name().strip() # Ensure no newlines/spaces
     messages = [{"role": "user", "content": prompt}]
 
     # If image, encode as base64 and attach
@@ -46,7 +47,7 @@ async def _chat(prompt: str, image_path: Optional[str] = None) -> str:
         messages[0]["images"] = [img_data]
 
     payload = {
-        "model": get_model_name(),
+        "model": model,
         "messages": messages,
         "stream": False,
         "options": {
@@ -56,13 +57,20 @@ async def _chat(prompt: str, image_path: Optional[str] = None) -> str:
     }
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        response = await client.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["message"]["content"]
+        try:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json=payload,
+            )
+            if response.status_code == 404:
+                raise Exception(f"Model '{model}' not found in Ollama. Please download it or select another model.")
+            response.raise_for_status()
+            data = response.json()
+            return data["message"]["content"]
+        except httpx.ConnectError:
+            raise Exception("Cannot connect to Ollama. Is it running?")
+        except Exception as e:
+            raise e
 
 
 def _parse_json_response(text: str) -> dict:
@@ -248,10 +256,12 @@ async def check_ollama_status() -> dict:
             resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             resp.raise_for_status()
             models = resp.json().get("models", [])
-            model_names = [m["name"] for m in models]
+            model_names = [m["name"].strip() for m in models]
             
-            current_model = get_model_name()
-            has_model = any(current_model.split(":")[0] in name for name in model_names)
+            current_model = get_model_name().strip()
+            # Loose match: check if the selected model name (before version) is in the available models
+            model_base = current_model.split(":")[0]
+            has_model = any(model_base in name or current_model in name for name in model_names)
 
             return {
                 "ollama_running": True,

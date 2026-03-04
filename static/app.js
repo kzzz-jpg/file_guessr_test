@@ -440,13 +440,24 @@ async function loadLLMSettings() {
         const res = await fetch(`${API}/api/llm/models`);
         const data = await res.json();
 
-        if (data.available_models) {
+        if (data.available_models && data.available_models.length > 0) {
             select.innerHTML = data.available_models.map(m =>
                 `<option value="${escapeAttr(m)}" ${m === data.selected_model ? 'selected' : ''}>${escapeHtml(m)}</option>`
             ).join('');
 
             if (!data.model_available && data.selected_model) {
                 // Warning if selected model is not in available list
+                const opt = document.createElement('option');
+                opt.value = data.selected_model;
+                opt.selected = true;
+                opt.textContent = `${data.selected_model} (未安裝!)`;
+                opt.style.color = '#ef4444';
+                select.prepend(opt);
+            }
+        } else {
+            // No models found but Ollama might be running
+            select.innerHTML = `<option value="">請先在 Ollama 中下載模型</option>`;
+            if (data.selected_model) {
                 const opt = document.createElement('option');
                 opt.value = data.selected_model;
                 opt.selected = true;
