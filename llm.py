@@ -76,64 +76,83 @@ async def _chat(prompt: str, image_path: Optional[str] = None) -> str:
 
 
 def _parse_json_response(text: str) -> dict:
-    """Try to extract JSON from LLM response."""
-    # Try to find JSON block in markdown code fence
-    json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-    if json_match:
-        text_to_parse = json_match.group(1)
-    else:
-        # Try to find JSON object directly
-        obj_match = re.search(r'\{.*\}', text, re.DOTALL)
-        text_to_parse = obj_match.group(0) if obj_match else None
+    """Try to extract JSON from LLM response with high resilience."""
+    if not text:
+        return {"summary": "", "keywords": []}
 
-    if text_to_parse:
+    # Clean up common garbage at start/end
+    text = text.strip()
+    
+    # 1. Try to find the LARGEST JSON-like structure
+    json_match = re.search(r'\{(?:[^{}]|(?R))*\}', text, re.DOTALL) # Recursion not supported in re, so use simpler
+    # Simpler: find first { and last }
+    first_brace = text.find('{')
+    last_brace = text.rfind('}')
+    
+    data = None
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        json_str = text[first_brace:last_brace+1]
         try:
-            data = json.loads(text_to_parse)
-            # Create a case-insensitive copy for key lookup
-            data_low = {k.lower(): v for k, v in data.items()}
-            
-            # Find keywords (handle keywords, tags, keyword_list, etc.)
-            raw_keywords = None
-            for key in ["keywords", "tags", "keyword_list", "entities"]:
-                if key in data_low:
-                    raw_keywords = data_low[key]
-                    break
-            
-            if isinstance(raw_keywords, str):
-                keywords = [k.strip() for k in re.split(r'[;,\n]', raw_keywords) if k.strip()]
-            elif isinstance(raw_keywords, list):
-                keywords = [str(k).strip() for k in raw_keywords if k]
-            else:
-                keywords = []
-                
-            # Find summary
-            summary = ""
-            for key in ["summary", "description", "abstract"]:
-                if key in data_low:
-                    summary = str(data_low[key])
-                    break
-            
-            if not summary and not keywords:
-                return {"summary": text.strip(), "keywords": []}
-                
-            return {"summary": summary, "keywords": keywords}
+            data = json.loads(json_str)
         except json.JSONDecodeError:
-            pass
+            # Try to fix common JSON errors (trailing commas, etc.)
+            json_str_fixed = re.sub(r',\s*([\]}])', r'\1', json_str)
+            try:
+                data = json.loads(json_str_fixed)
+            except json.JSONDecodeError:
+                pass
 
-    # Fallback: return the whole text as summary, and try to find anything that looks like a list
+    if data and isinstance(data, dict):
+        # Create a case-insensitive copy for key lookup
+        data_low = {k.lower(): v for k, v in data.items()}
+        
+        # Keywords extraction
+        keywords = []
+        for key in ["keywords", "tags", "keyword_list", "entities", "labels"]:
+            if key in data_low:
+                val = data_low[key]
+                if isinstance(val, str):
+                    keywords = [k.strip() for k in re.split(r'[;,\n]', val) if k.strip()]
+                elif isinstance(val, list):
+                    keywords = [str(k).strip() for k in val if k]
+                break
+        
+        # Summary extraction
+        summary = ""
+        for key in ["summary", "description", "abstract", "content"]:
+            if key in data_low:
+                summary = str(data_low[key]).strip()
+                break
+        
+        # If we have both, we are good
+        if summary and keywords:
+            return {"summary": summary, "keywords": keywords}
+        
+        # If we have keywords but no summary, use text as fallback or try to find a summary key inside
+        if not summary and keywords:
+            summary = text.strip()
+            # If text is too long (the whole JSON string), try to truncate
+            if len(summary) > 500:
+                summary = summary[:497] + "..."
+            return {"summary": summary, "keywords": keywords}
+
+    # Fallback: line-by-line parsing
     keywords = []
     lines = text.split("\n")
     for line in lines:
         line = line.strip()
         # Look for bullet points
-        if line.startswith(("- ", "* ", "• ")):
+        if line.startswith(("- ", "* ", "• ")) and len(line) > 2:
             keywords.append(line[2:].strip())
         # Look for "Keywords: A, B, C"
-        elif ":" in line and any(k in line.lower() for k in ["keywords", "tags"]):
+        elif ":" in line and any(k in line.lower() for k in ["keywords", "tags", "labels"]):
             parts = line.split(":", 1)[1]
             keywords.extend([k.strip() for k in re.split(r'[;,\n]', parts) if k.strip()])
     
-    return {"summary": text.strip(), "keywords": list(set(keywords))}
+    # Final fallback: use the whole text as summary
+    # Cleanup text for summary (remove markdown tags)
+    clean_text = re.sub(r'```.*?```', '', text, flags=re.DOTALL).strip()
+    return {"summary": clean_text if clean_text else text.strip(), "keywords": list(set(keywords))}
 
 
 async def extract_keywords(text: str, file_name: str) -> dict:

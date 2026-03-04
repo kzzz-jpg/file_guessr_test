@@ -131,6 +131,7 @@ async def index_file(file_path: str) -> bool:
 
             raw_text = text_content
             result = await extract_keywords(text_content, file_name)
+            print(f"[Indexer] Extracted for {file_name}: {len(result.get('keywords', []))} keywords, summary len: {len(result.get('summary', ''))}")
 
         # Store in database — use comma-separated keywords to preserve multi-word terms
         keywords_list = result.get("keywords", [])

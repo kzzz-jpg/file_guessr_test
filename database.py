@@ -185,6 +185,7 @@ def _normalize_path(path: str) -> str:
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # Enable WAL mode for better concurrency (multiple readers + 1 writer)
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
