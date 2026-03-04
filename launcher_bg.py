@@ -47,11 +47,47 @@ class BackgroundLauncher:
         dc.line((45, 45, 58, 58), fill=color_text, width=6)
         return image
 
+    def ensure_es_service(self):
+        """Ensure Elasticsearch service is running on Windows."""
+        if os.name != 'nt':
+            return
+
+        try:
+            # Check service status
+            result = subprocess.run(['sc', 'query', 'elasticsearch-service-x64'], 
+                                   capture_output=True, text=True)
+            if "RUNNING" in result.stdout:
+                logging.info("Elasticsearch service is already running.")
+                return
+
+            if "SERVICE_NAME" in result.stdout:
+                logging.info("Starting Elasticsearch service...")
+                # Try starting (might require admin)
+                start_res = subprocess.run(['sc', 'start', 'elasticsearch-service-x64'], 
+                                          capture_output=True, text=True)
+                
+                if "Access is denied" in start_res.stderr or "Access is denied" in start_res.stdout:
+                    logging.warning("Access denied when starting ES service. Attempting elevation...")
+                    # Elevation trick using PowerShell
+                    cmd = "Start-Process cmd -ArgumentList '/c sc start elasticsearch-service-x64' -Verb RunAs"
+                    subprocess.run(['powershell', '-Command', cmd], creationflags=subprocess.CREATE_NO_WINDOW)
+                    time.sleep(5)
+                else:
+                    # Wait a bit for it to spin up
+                    time.sleep(5)
+            else:
+                logging.warning("Elasticsearch service 'elasticsearch-service-x64' not found.")
+        except Exception as e:
+            logging.error(f"Error checking/starting ES service: {e}")
+
     def start_server(self):
         logging.info("Starting server...")
         if self.is_running:
             logging.info("Server already marked as running.")
             return
+
+        # Ensure ES is up before the app tries to connect
+        self.ensure_es_service()
 
         # Check if port 8000 is already in use
         if self.is_port_in_use(8000):
