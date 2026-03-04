@@ -49,14 +49,15 @@ class BackgroundLauncher:
 
     def wait_for_es_http(self, timeout=30):
         """Wait for Elasticsearch HTTP endpoint to be responsive."""
-        logging.info(f"Waiting for Elasticsearch HTTP to be ready (timeout={timeout}s)...")
+        logging.info(f"Waiting for Elasticsearch HTTP to be ready at localhost:9200 (timeout={timeout}s)...")
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                with socket.create_connection(("127.0.0.1", 9200), timeout=1):
-                    logging.info("Elasticsearch HTTP is ready.")
+                # Use localhost to match run.bat behavior
+                with socket.create_connection(("localhost", 9200), timeout=1):
+                    logging.info("Elasticsearch HTTP port is open/responsive.")
                     return True
-            except (socket.timeout, ConnectionRefusedError):
+            except (socket.timeout, ConnectionRefusedError, socket.error):
                 time.sleep(2)
         logging.warning("Elasticsearch HTTP wait timed out.")
         return False
@@ -68,7 +69,7 @@ class BackgroundLauncher:
 
         service_name = 'elasticsearch-service-x64'
         try:
-            # Check service status
+            # Check service status using cmd to avoid PowerShell overhead where possible
             result = subprocess.run(['sc', 'query', service_name], 
                                    capture_output=True, text=True)
             
@@ -77,26 +78,30 @@ class BackgroundLauncher:
                 return False
 
             if "RUNNING" not in result.stdout:
-                logging.info("Starting Elasticsearch service...")
+                logging.info(f"Service state: NOT RUNNING. Attempting to start {service_name}...")
                 # Try starting (might require admin)
-                start_res = subprocess.run(['sc', 'start', service_name], 
-                                          capture_output=True, text=True)
+                subprocess.run(['sc', 'start', service_name], capture_output=True, text=True)
                 
-                if "Access is denied" in start_res.stderr or "Access is denied" in start_res.stdout:
-                    logging.warning("Access denied when starting ES service. Attempting elevation...")
+                # Check if it actually started or if we need elevation
+                time.sleep(1)
+                check = subprocess.run(['sc', 'query', service_name], capture_output=True, text=True)
+                if "RUNNING" not in check.stdout:
+                    logging.warning("Direct sc start failed. Attempting elevation via PowerShell...")
                     cmd = f"Start-Process cmd -ArgumentList '/c sc start {service_name}' -Verb RunAs"
                     subprocess.run(['powershell', '-Command', cmd], creationflags=subprocess.CREATE_NO_WINDOW)
                 
                 # Wait for RUNNING state
                 logging.info("Waiting for service to reach RUNNING state...")
-                for _ in range(15): # Wait up to 30 seconds for service start
+                for i in range(15): # Wait up to 30 seconds
                     time.sleep(2)
                     check = subprocess.run(['sc', 'query', service_name], capture_output=True, text=True)
                     if "RUNNING" in check.stdout:
-                        logging.info("Service is now RUNNING.")
+                        logging.info(f"Service reached RUNNING state after {i*2+2} seconds.")
                         break
+            else:
+                logging.info("Elasticsearch service is already RUNNING.")
             
-            # Even if it was already RUNNING, wait for HTTP (Elasticsearch initialization takes time)
+            # Wait for HTTP level readiness
             return self.wait_for_es_http()
 
         except Exception as e:
@@ -120,8 +125,20 @@ class BackgroundLauncher:
 
         try:
             # Start uvicorn as a subprocess
-            cmd = [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"]
+            # Use python.exe instead of pythonw.exe for uvicorn to ensure standard behavior
+            # even when launched from pythonw.exe
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            python_exe = os.path.join(base_dir, "venv", "Scripts", "python.exe")
+            if not os.path.exists(python_exe):
+                python_exe = sys.executable.replace("pythonw.exe", "python.exe")
+
+            cmd = [python_exe, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"]
             logging.info(f"Running command: {' '.join(cmd)}")
+            
+            # Pipe uvicorn output to a log file for debugging
+            server_log = open(os.path.join(base_dir, "server.log"), "a")
+            server_log.write(f"\n--- Server Starting at {time.ctime()} ---\n")
+            server_log.flush()
             
             # Hide console window on Windows
             startupinfo = None
@@ -134,9 +151,10 @@ class BackgroundLauncher:
                 cmd, 
                 startupinfo=startupinfo,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=os.path.dirname(os.path.abspath(__file__))
+                stdout=server_log,
+                stderr=server_log,
+                cwd=base_dir,
+                text=True
             )
             
             logging.info(f"Server process started with PID {self.server_process.pid}")
