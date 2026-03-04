@@ -179,8 +179,8 @@ function renderResult(r, index, expandedQuery, originalQuery) {
     const iconName = getFileIcon(r.file_type);
     const isImage = isImageType(r.file_type);
     const size = formatSize(r.file_size);
-    // Split by comma instead of space to preserve multi-word keyword tags like "binary search"
-    const keywords = (r.keywords || '').split(',').map(k => k.trim()).filter(k => k);
+    // Split by multiple possible separators (comma, semicolon, newline, bullet points)
+    const keywords = (r.keywords || '').split(/[;,\n•]/).map(k => k.trim()).filter(k => k);
 
     // Combine original and expanded query for better highlighting coverage
     const combinedQuery = (originalQuery || '') + ' ' + (expandedQuery || '');

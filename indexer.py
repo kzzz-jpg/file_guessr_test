@@ -133,7 +133,8 @@ async def index_file(file_path: str) -> bool:
             result = await extract_keywords(text_content, file_name)
 
         # Store in database — use comma-separated keywords to preserve multi-word terms
-        keywords_str = ", ".join(result.get("keywords", []))
+        keywords_list = result.get("keywords", [])
+        keywords_str = ", ".join(keywords_list)
         upsert_file(
             file_path=file_path,
             file_name=file_name,

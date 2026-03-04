@@ -84,12 +84,25 @@ def _parse_json_response(text: str) -> dict:
     json_match = re.search(r'\{.*\}', text, re.DOTALL)
     if json_match:
         try:
-            return json.loads(json_match.group(0))
+            data = json.loads(json_match.group(0))
+            # Ensure keywords are always a list, even if the model returns a string
+            if "keywords" in data and isinstance(data["keywords"], str):
+                # Split by comma, semicolon, or newline
+                data["keywords"] = [k.strip() for k in re.split(r'[;,\n]', data["keywords"]) if k.strip()]
+            return data
         except json.JSONDecodeError:
             pass
 
-    # Fallback: return the whole text as summary
-    return {"summary": text.strip(), "keywords": []}
+    # Fallback: return the whole text as summary, and try to find anything that looks like a list
+    keywords = []
+    # Look for bullet points or comma-separated lists if JSON fails
+    lines = text.split("\n")
+    for line in lines:
+        line = line.strip()
+        if line.startswith(("- ", "* ", "• ")):
+            keywords.append(line[2:].strip())
+    
+    return {"summary": text.strip(), "keywords": keywords}
 
 
 async def extract_keywords(text: str, file_name: str) -> dict:
