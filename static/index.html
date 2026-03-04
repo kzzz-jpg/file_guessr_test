@@ -172,11 +172,20 @@
                             <i data-lucide="refresh-cw" class="icon-xs"></i>
                             重新整理
                         </button>
-                        <button class="btn btn-danger btn-xs" onclick="clearIndex()">
-                            <i data-lucide="trash-2" class="icon-xs"></i>
-                            清除索引
-                        </button>
                     </div>
+                </div>
+
+                <div class="settings-group">
+                    <label>診斷工具</label>
+                    <button class="btn-ghost" onclick="showAiLogs()" style="width: 100%; justify-content: flex-start;">
+                        <i data-lucide="file-text" class="icon-sm"></i>
+                        查看 AI 引擎日誌
+                    </button>
+                    <button class="btn-ghost" onclick="clearIndex()"
+                        style="width: 100%; justify-content: flex-start; color: var(--color-danger);">
+                        <i data-lucide="trash-2" class="icon-sm"></i>
+                        清除索引資料
+                    </button>
                 </div>
             </div>
         </div>

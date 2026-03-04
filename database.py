@@ -266,6 +266,8 @@ def upsert_file(file_path: str, file_name: str, file_type: str,
                 file_size: int, modified_time: float,
                 summary: str, keywords: str, raw_text: str):
     """Insert or update a file record in both SQLite and ES."""
+    from llm import ai_logger
+    ai_logger.info(f"[DB] Upserting {file_name}: keywords={len(keywords)}, summary={len(summary)}")
     file_path = _normalize_path(file_path)
     conn = get_connection()
     conn.execute("""

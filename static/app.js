@@ -544,3 +544,42 @@ function copyPath(path) {
         setTimeout(() => toast.remove(), 2000);
     });
 }
+async function showAiLogs() {
+    try {
+        const res = await fetch(`${API}/api/llm/logs`);
+        const data = await res.json();
+
+        // Show in a simple modal or alert block
+        const logContent = data.logs || 'No logs found.';
+
+        // Use a simple custom overlay for logs because logs can be long
+        let overlay = document.getElementById('log-viewer-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'log-viewer-overlay';
+            overlay.className = 'overlay-message log-viewer';
+            overlay.innerHTML = `
+                <div class="overlay-content" style="max-width: 90%; width: 800px; max-height: 80vh;">
+                    <button class="close-btn" onclick="this.parentElement.parentElement.remove()">×</button>
+                    <h2 class="section-title">AI 引擎日誌 (最後 100 條)</h2>
+                    <pre id="log-text-area" style="text-align: left; background: #1a1a1a; color: #a29bfe; padding: 1rem; border-radius: 8px; overflow-y: auto; max-height: 60vh; font-family: monospace; font-size: 0.85rem; border: 1px solid #3d3b6e;"></pre>
+                    <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+                        <button class="btn-primary" onclick="showAiLogs()">重新整理</button>
+                        <button class="btn-ghost" onclick="this.parentElement.parentElement.parentElement.remove()">關閉</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+
+        const textArea = document.getElementById('log-text-area');
+        if (textArea) {
+            textArea.textContent = logContent;
+            // Scroll to bottom
+            textArea.scrollTop = textArea.scrollHeight;
+        }
+
+    } catch (e) {
+        showOverlay(`讀取日誌失敗: ${e.message}`);
+    }
+}

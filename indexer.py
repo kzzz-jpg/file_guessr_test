@@ -7,7 +7,7 @@ import asyncio
 from typing import Callable, Optional
 
 from file_parser import parse_file, get_file_category, get_document_images, cleanup_temp_images
-from llm import extract_keywords, describe_image
+from llm import extract_keywords, describe_image, ai_logger
 from database import upsert_file, get_file_modified_time, add_watched_folder
 
 # Skip files larger than 50MB
@@ -131,11 +131,12 @@ async def index_file(file_path: str) -> bool:
 
             raw_text = text_content
             result = await extract_keywords(text_content, file_name)
-            print(f"[Indexer] Extracted for {file_name}: {len(result.get('keywords', []))} keywords, summary len: {len(result.get('summary', ''))}")
+            ai_logger.info(f"[Indexer] {file_name}: Extracted {len(result.get('keywords', []))} keywords.")
 
         # Store in database — use comma-separated keywords to preserve multi-word terms
         keywords_list = result.get("keywords", [])
         keywords_str = ", ".join(keywords_list)
+        ai_logger.info(f"[Indexer] {file_name}: Saving to DB. Summary len={len(result.get('summary', ''))}")
         upsert_file(
             file_path=file_path,
             file_name=file_name,
@@ -233,6 +234,7 @@ async def index_folder(folder_path: str):
             pass
 
         # Index files one by one (local LLM = sequential is better)
+        ai_logger.info(f"[Indexer] Starting to index {len(files)} files in {folder_path}")
         for i, file_path in enumerate(files):
             indexing_state["current_file"] = os.path.basename(file_path)
             indexing_state["processed_files"] = i

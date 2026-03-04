@@ -254,6 +254,22 @@ async def set_llm_model(body: dict):
     return {"message": f"Model updated to: {model_name}"}
 
 
+@app.get("/api/llm/logs")
+async def get_llm_logs():
+    """Get the last N lines of the AI engine log."""
+    from llm import ai_log_file
+    if not os.path.exists(ai_log_file):
+        return {"logs": "Log file not found."}
+    
+    try:
+        with open(ai_log_file, "r", encoding="utf-8") as f:
+            # Get last 100 lines
+            lines = f.readlines()
+            return {"logs": "".join(lines[-100:])}
+    except Exception as e:
+        return {"logs": f"Error reading logs: {e}"}
+
+
 @app.post("/api/clear")
 async def clear_index():
     """Clear all indexed data."""

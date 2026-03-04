@@ -6,7 +6,20 @@ import httpx
 import base64
 import json
 import re
+import logging
+import os
 from typing import Optional
+
+# Setup AI Logger
+ai_log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ai.log")
+ai_logger = logging.getLogger("ai_engine")
+ai_logger.setLevel(logging.INFO)
+# Clear existing handlers
+if ai_logger.handlers:
+    ai_logger.handlers.clear()
+handler = logging.FileHandler(ai_log_file, encoding='utf-8')
+handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+ai_logger.addHandler(handler)
 
 OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 TIMEOUT = 300.0  # seconds - local model can be slow
@@ -67,7 +80,8 @@ async def _chat(prompt: str, image_path: Optional[str] = None) -> str:
             response.raise_for_status()
             data = response.json()
             content = data["message"]["content"]
-            print(f"[LLM DEBUG] Raw Output: {content}")
+            ai_logger.info(f"Model '{model}' responded. Content length: {len(content)}")
+            ai_logger.debug(f"Raw Output: {content}")
             return content
         except httpx.ConnectError:
             raise Exception("Cannot connect to Ollama. Is it running?")
@@ -152,7 +166,9 @@ def _parse_json_response(text: str) -> dict:
     # Final fallback: use the whole text as summary
     # Cleanup text for summary (remove markdown tags)
     clean_text = re.sub(r'```.*?```', '', text, flags=re.DOTALL).strip()
-    return {"summary": clean_text if clean_text else text.strip(), "keywords": list(set(keywords))}
+    result = {"summary": clean_text if clean_text else text.strip(), "keywords": list(set(keywords))}
+    ai_logger.info(f"Parsed JSON/Fallback: {len(result['keywords'])} keywords found.")
+    return result
 
 
 async def extract_keywords(text: str, file_name: str) -> dict:
@@ -191,6 +207,7 @@ FORMAT:
 {{"summary": "Brief description of the file content", "keywords": ["keyword1", "keyword2", "keyword3"]}}"""
 
     try:
+        ai_logger.info(f"Extracting keywords for {file_name}...")
         response = await _chat(prompt)
         result = _parse_json_response(response)
         # Ensure required fields
