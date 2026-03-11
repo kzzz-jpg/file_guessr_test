@@ -36,6 +36,13 @@ diagnose.py
 diagnose_stale.py
 debug_run.bat
 run_diagnose.bat
+
+# Scraped Data
+news_data/
+wiki_data/
+Advanced_Robotics_AI/
+
+# Build & Scripts (Upstream)
 run.bat
 fix_environment.bat
 *.tmp
